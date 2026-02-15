@@ -1,0 +1,57 @@
+{
+    "6990c74d8f7e024b8aee1a40": {
+        "itemTplToClone": "544fb37f4bdc2dee738b4567",
+        "parentId": "5448f3a14bdc2d27728b4569",
+        "handbookParentId": "5b47574386f77428ca22b337",
+        "overrideProperties": {
+            "ExaminedByDefault": true,
+            "effects_damage": {
+                "Pain": {
+                    "delay": 0,
+                    "duration": 60,
+                    "fadeOut": 15
+                }
+            }
+        },
+        "locales": {
+            "en": {
+                "name": "Paracetamol painkillers",
+                "shortName": "Paracetamol",
+                "description": "A common painkiller that can be used to treat pain and fever."
+            }
+        },
+        "fleaPriceRoubles": 6005,
+        "handbookPriceRoubles": 4003,
+        "addtoBots": true,
+        "addtoStaticLootContainers": true,
+        "StaticLootContainers": [
+            {
+                "ContainerName": "LOOTCONTAINER_DEAD_SCAV",
+                "Probability": 20
+            },
+            {
+                "ContainerName": "MEDICAL_SUPPLIES",
+                "Probability": 20
+            }
+        ],
+        "addtoSecureFilters": true,
+        "addtoTraders": true,
+        "traders": {
+            "54cb57776803fa99248b456e": {
+                "6990c875d1965e370c50c144": {
+                    "barterSettings": {
+                        "loyalLevel": 1,
+                        "unlimitedCount": true,
+                        "stackObjectsCount": 99
+                    },
+                    "barters": [
+                        {
+                            "count": 5532,
+                            "_tpl": "MONEY_ROUBLES"
+                        }
+                    ]
+                }
+            }
+        }
+    }
+}

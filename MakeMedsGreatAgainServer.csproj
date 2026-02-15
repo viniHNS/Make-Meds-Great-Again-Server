@@ -1,0 +1,59 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <RootNamespace>MakeMedsGreatAgain</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <OutputType>Library</OutputType>
+    <Version>1.2.6</Version>
+    <!-- The two lines below will set the output path for the binaries -->
+    <OutputPath>bin\$(Configuration)\$(ProjectName)\$(AssemblyName)\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="SPTarkov.Common">
+      <HintPath>..\..\..\SPT\SPTarkov.Common.dll</HintPath>
+    </Reference>
+    <Reference Include="SPTarkov.DI">
+      <HintPath>..\..\..\SPT\SPTarkov.DI.dll</HintPath>
+    </Reference>
+    <Reference Include="SPTarkov.Server.Core">
+      <HintPath>..\..\..\SPT\SPTarkov.Server.Core.dll</HintPath>
+    </Reference>
+    <Reference Include="SPT.Server">
+      <HintPath>..\..\..\SPT\SPT.Server.dll</HintPath>
+    </Reference>
+    <Reference Include="SemanticVersioning">
+      <HintPath>..\..\..\SPT\SemanticVersioning.dll</HintPath>
+    </Reference>
+    <PackageReference Include="WTT-ServerCommonLib" Version="2.0.15" />
+  </ItemGroup>
+
+  <Target Name="PostBuild" AfterTargets="PostBuildEvent" Condition=" '$(Configuration)' == 'Release' ">
+    <PropertyGroup>
+      <DeployDir>$(OutputPath)\Deploy</DeployDir>
+      <ModDir>$(DeployDir)\SPT\user\mods\MakeMedsGreatAgain</ModDir>
+      <BepInExDir>$(DeployDir)\BepInEx\plugins</BepInExDir>
+      <ZipFile>$(OutputPath)\MakeMedsGreatAgain-$(Version).zip</ZipFile>
+    </PropertyGroup>
+
+    <RemoveDir Directories="$(DeployDir)" />
+    <MakeDir Directories="$(ModDir)" />
+    <MakeDir Directories="$(BepInExDir)" />
+
+    <Copy SourceFiles="$(OutputPath)\$(AssemblyName).dll" DestinationFolder="$(ModDir)" />
+    <Copy SourceFiles="..\bin\Release\netstandard2.1\makeMedsGreatAgain.dll" DestinationFolder="$(BepInExDir)" />
+    
+    <ItemGroup>
+      <ConfigFiles Include="$(ProjectDir)\config\**\*.*" />
+      <DbFiles Include="$(ProjectDir)\db\**\*.*" />
+    </ItemGroup>
+    
+    <Copy SourceFiles="@(ConfigFiles)" DestinationFolder="$(ModDir)\config\%(RecursiveDir)" />
+    <Copy SourceFiles="@(DbFiles)" DestinationFolder="$(ModDir)\db\%(RecursiveDir)" />
+
+    <ZipDirectory SourceDirectory="$(DeployDir)" DestinationFile="$(ZipFile)" Overwrite="true" />
+  </Target>
+</Project>
