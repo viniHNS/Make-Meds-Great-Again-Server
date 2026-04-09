@@ -32,6 +32,7 @@
 user/
 BepInEx/
 *.log
+*.zip
 
 # Windows
 Thumbs.db

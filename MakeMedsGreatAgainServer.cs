@@ -20,17 +20,17 @@ public record ModMetadata : AbstractModMetadata
     public override string Name { get; init; } = "Make Meds Great Again";
     public override string Author { get; init; } = "ViniHNS";
     public override List<string>? Contributors { get; init; }
-    public override SemanticVersioning.Version Version { get; init; } = new("1.2.5");
+    public override SemanticVersioning.Version Version { get; init; } = new("1.2.6");
     public override SemanticVersioning.Range SptVersion { get; init; } = new("~4.0.0");
 
 
     public override List<string>? Incompatibilities { get; init; }
     public override Dictionary<string, Range>? ModDependencies { get; init; } = new()
     {
-        { "com.wtt.commonlib", new Range("2.0.15") }
+        { "com.wtt.commonlib", new Range("~2.0.15") }
 
     };
-    public override string? Url { get; init; } = "https://github.com/viniHNS/Make-Meds-Great-Again-Client";
+    public override string? Url { get; init; } = "https://github.com/viniHNS/Make-Meds-Great-Again-Server";
     public override bool? IsBundleMod { get; init; } = false;
     public override string License { get; init; } = "MIT";
 }

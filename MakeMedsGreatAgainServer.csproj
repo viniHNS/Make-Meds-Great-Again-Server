@@ -13,47 +13,31 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Reference Include="SPTarkov.Common">
-      <HintPath>..\..\..\SPT\SPTarkov.Common.dll</HintPath>
-    </Reference>
-    <Reference Include="SPTarkov.DI">
-      <HintPath>..\..\..\SPT\SPTarkov.DI.dll</HintPath>
-    </Reference>
-    <Reference Include="SPTarkov.Server.Core">
-      <HintPath>..\..\..\SPT\SPTarkov.Server.Core.dll</HintPath>
-    </Reference>
-    <Reference Include="SPT.Server">
-      <HintPath>..\..\..\SPT\SPT.Server.dll</HintPath>
-    </Reference>
-    <Reference Include="SemanticVersioning">
-      <HintPath>..\..\..\SPT\SemanticVersioning.dll</HintPath>
-    </Reference>
-    <PackageReference Include="WTT-ServerCommonLib" Version="2.0.15" />
+    <PackageReference Include="SPTarkov.Common" Version="4.0.13" />
+    <PackageReference Include="SPTarkov.DI" Version="4.0.13" />
+    <PackageReference Include="SPTarkov.Server.Core" Version="4.0.13" />
+    <PackageReference Include="WTT-ServerCommonLib" Version="2.0.17" />
   </ItemGroup>
 
-  <Target Name="PostBuild" AfterTargets="PostBuildEvent" Condition=" '$(Configuration)' == 'Release' ">
+  <Target Name="PackageModForDistribution" AfterTargets="Build">
     <PropertyGroup>
-      <DeployDir>$(OutputPath)\Deploy</DeployDir>
-      <ModDir>$(DeployDir)\SPT\user\mods\MakeMedsGreatAgain</ModDir>
-      <BepInExDir>$(DeployDir)\BepInEx\plugins</BepInExDir>
-      <ZipFile>$(OutputPath)\MakeMedsGreatAgain-$(Version).zip</ZipFile>
+      <ModName>$(AssemblyName)</ModName>
+      <ZipFileName>$(ModName).zip</ZipFileName>
+      <TempPackageDir>$(ProjectDir)obj\Package</TempPackageDir>
+      <ModPackageDir>$(TempPackageDir)\SPT\user\mods\$(ModName)</ModPackageDir>
     </PropertyGroup>
-
-    <RemoveDir Directories="$(DeployDir)" />
-    <MakeDir Directories="$(ModDir)" />
-    <MakeDir Directories="$(BepInExDir)" />
-
-    <Copy SourceFiles="$(OutputPath)\$(AssemblyName).dll" DestinationFolder="$(ModDir)" />
-    <Copy SourceFiles="..\bin\Release\netstandard2.1\makeMedsGreatAgain.dll" DestinationFolder="$(BepInExDir)" />
-    
+    <Message Text="--- Starting Mod packaging for distribution ---" Importance="high" />
+    <RemoveDir Directories="$(TempPackageDir)" />
+    <MakeDir Directories="$(ModPackageDir)" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ModPackageDir)" />
     <ItemGroup>
-      <ConfigFiles Include="$(ProjectDir)\config\**\*.*" />
-      <DbFiles Include="$(ProjectDir)\db\**\*.*" />
+      <ConfigFiles Include="$(ProjectDir)config\**\*.*" />
+      <DbFiles Include="$(ProjectDir)db\**\*.*" />
     </ItemGroup>
-    
-    <Copy SourceFiles="@(ConfigFiles)" DestinationFolder="$(ModDir)\config\%(RecursiveDir)" />
-    <Copy SourceFiles="@(DbFiles)" DestinationFolder="$(ModDir)\db\%(RecursiveDir)" />
-
-    <ZipDirectory SourceDirectory="$(DeployDir)" DestinationFile="$(ZipFile)" Overwrite="true" />
+    <Copy SourceFiles="@(ConfigFiles)" DestinationFolder="$(ModPackageDir)\config\%(RecursiveDir)" />
+    <Copy SourceFiles="@(DbFiles)" DestinationFolder="$(ModPackageDir)\db\%(RecursiveDir)" />
+    <ZipDirectory SourceDirectory="$(TempPackageDir)" DestinationFile="$(ProjectDir)$(ZipFileName)" Overwrite="true" />
+    <RemoveDir Directories="$(TempPackageDir)" />
+    <Message Text="--- Mod successfully packaged at: $(ProjectDir)$(ZipFileName) ---" Importance="high" />
   </Target>
 </Project>
