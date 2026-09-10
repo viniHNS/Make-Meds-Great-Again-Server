@@ -1,52 +1,57 @@
-using System.Collections.Generic;
-using System.Linq;
-using SPTarkov.Server.Core.Models.Enums;
-using System.Reflection;
-using System.Threading.Tasks;
+using SPTarkov.Common.Models.Logging;
 using SPTarkov.DI.Annotations;
 using SPTarkov.Server.Core.DI;
-using SPTarkov.Server.Core.Helpers;
-using SPTarkov.Server.Core.Models.Spt.Mod;
-using SPTarkov.Server.Core.Services;
+using SPTarkov.Server.Core.Helpers.Server;
 using SPTarkov.Server.Core.Models.Eft.Common.Tables;
-using SPTarkov.Server.Core.Models.Utils;
+using SPTarkov.Server.Core.Models.Enums;
+using SPTarkov.Server.Core.Models.Spt.Mod;
+using SPTarkov.Server.Core.Models.Spt.Tables;
+using System.Reflection;
 using Range = SemanticVersioning.Range;
 
 namespace MakeMedsGreatAgain;
 
-public record ModMetadata : AbstractModMetadata
+public record ModMetadata : IModMetadata
 {
-    public override string ModGuid { get; init; } = "com.vinihns.makeMedsGreatAgain";
-    public override string Name { get; init; } = "Make Meds Great Again";
-    public override string Author { get; init; } = "ViniHNS";
-    public override List<string>? Contributors { get; init; }
-    public override SemanticVersioning.Version Version { get; init; } = new("1.2.6");
-    public override SemanticVersioning.Range SptVersion { get; init; } = new("~4.0.0");
+    public string ModGuid { get; init; } = "com.vinihns.makeMedsGreatAgain";
+    public string Name { get; init; } = "Make Meds Great Again";
+    public string Author { get; init; } = "ViniHNS";
+    public List<string>? Contributors { get; init; }
+    public SemanticVersioning.Version Version { get; init; } = new("1.2.7");
+    public SemanticVersioning.Range SptVersion { get; init; } = new("~4.1.0");
 
+    public List<string>? Incompatibilities { get; init; }
 
-    public override List<string>? Incompatibilities { get; init; }
-    public override Dictionary<string, Range>? ModDependencies { get; init; } = new()
+    public Dictionary<string, Range>? ModDependencies { get; init; } = new()
     {
-        { "com.wtt.commonlib", new Range("~2.0.15") }
-
+        { "com.wtt.commonlib", new Range("~3.0.6") }
     };
-    public override string? Url { get; init; } = "https://github.com/viniHNS/Make-Meds-Great-Again-Server";
-    public override bool? IsBundleMod { get; init; } = false;
-    public override string License { get; init; } = "MIT";
+
+    public string? Url { get; init; } =
+        "https://github.com/viniHNS/Make-Meds-Great-Again-Server";
+
+    public string License { get; init; } = "MIT";
+
+    public bool HasPrepatcher { get; init; } = false;
 }
 
-[Injectable(TypePriority = OnLoadOrder.PostDBModLoader + 1)]
+[Injectable(TypePriority = OnLoadOrder.Preload + 1)]
 public class MakeMedsGreatAgain(
     ISptLogger<MakeMedsGreatAgain> logger,
-    ModHelper modHelper, DatabaseService databaseService,
+    ModHelper modHelper,
+    TemplateTable templateTable,
     WTTServerCommonLib.WTTServerCommonLib wttCommon)
     : IOnLoad
 {
-    public async Task OnLoad()
+    public async Task OnLoadAsync(CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         var assembly = Assembly.GetExecutingAssembly();
 
         await wttCommon.CustomItemServiceExtended.CreateCustomItems(assembly);
+
+        cancellationToken.ThrowIfCancellationRequested();
 
         var pathToMod = modHelper.GetAbsolutePathToModFolder(Assembly.GetExecutingAssembly());
         var config = modHelper.GetJsonDataFromFile<ModConfig>(pathToMod, "config/config.json");
@@ -62,20 +67,16 @@ public class MakeMedsGreatAgain(
             logger.Info("MakeMedsGreatAgain: Config loaded successfully. Debug mode enabled.");
         }
 
-        var globals = databaseService.GetTables();
-
-        if (globals == null)
-        {
-            logger.Error("Critical error: Database tables are null. Cannot proceed.");
-            return;
-        }
-
         void UpdateItemHP(string itemId, int hp)
         {
-            if (globals.Templates.Items.TryGetValue(itemId, out var item) && item != null)
+            if (templateTable.Items.TryGetValue(itemId, out var item) && item != null)
             {
                 item.Properties.MaxHpResource = hp;
-                if (config.debug) logger.Info($"MakeMedsGreatAgain: Updated HP for {itemId} to {hp}");
+
+                if (config.debug)
+                {
+                    logger.Info($"MakeMedsGreatAgain: Updated HP for {itemId} to {hp}");
+                }
             }
             else if (config.debug)
             {
@@ -83,21 +84,35 @@ public class MakeMedsGreatAgain(
             }
         }
 
-        void UpdateBleedingFractureEffects(string itemId, bool canHealHeavyBleeding, int heavyBleedingCost, bool canHealFracture, int fractureCost, bool canHealLightBleeding, int lightBleedingCost)
+        void UpdateBleedingFractureEffects(
+            string itemId,
+            bool canHealHeavyBleeding,
+            int heavyBleedingCost,
+            bool canHealFracture,
+            int fractureCost,
+            bool canHealLightBleeding,
+            int lightBleedingCost)
         {
-            if (globals.Templates.Items.TryGetValue(itemId, out var item) && item != null)
+            if (templateTable.Items.TryGetValue(itemId, out var item) && item != null)
             {
-                // Ensure the item has EffectsDamage dictionary
                 if (item.Properties.EffectsDamage == null)
                 {
-                    item.Properties.EffectsDamage = new Dictionary<DamageEffectType, EffectsDamageProperties>();
+                    item.Properties.EffectsDamage =
+                        new Dictionary<DamageEffectType, EffectsDamageProperties>();
                 }
 
-                // Helper to add or remove effect
-                void UpdateEffect(DamageEffectType type, bool enabled, int cost, int delay = 0, int duration = 0, int fadeOut = 0)
+                void UpdateEffect(
+                    DamageEffectType type,
+                    bool enabled,
+                    int cost,
+                    int delay = 0,
+                    int duration = 0,
+                    int fadeOut = 0)
                 {
-                    // Double check Properties just in case
-                    if (item.Properties.EffectsDamage == null) return;
+                    if (item.Properties.EffectsDamage == null)
+                    {
+                        return;
+                    }
 
                     if (enabled)
                     {
@@ -117,52 +132,75 @@ public class MakeMedsGreatAgain(
                         {
                             item.Properties.EffectsDamage.Add(type, effect);
                         }
-                        if (config.debug) logger.Info($"MakeMedsGreatAgain: Enabled effect {type} for {itemId} with cost {cost}");
+
+                        if (config.debug)
+                        {
+                            logger.Info(
+                                $"MakeMedsGreatAgain: Enabled effect {type} for {itemId} with cost {cost}");
+                        }
                     }
                     else
                     {
                         if (item.Properties.EffectsDamage.ContainsKey(type))
                         {
                             item.Properties.EffectsDamage.Remove(type);
-                            if (config.debug) logger.Info($"MakeMedsGreatAgain: Removed effect {type} from {itemId}");
+
+                            if (config.debug)
+                            {
+                                logger.Info(
+                                    $"MakeMedsGreatAgain: Removed effect {type} from {itemId}");
+                            }
                         }
                     }
                 }
 
-                // Heavy Bleeding
-                UpdateEffect(DamageEffectType.HeavyBleeding, canHealHeavyBleeding, heavyBleedingCost);
+                UpdateEffect(
+                    DamageEffectType.HeavyBleeding,
+                    canHealHeavyBleeding,
+                    heavyBleedingCost);
 
-                // Light Bleeding
-                UpdateEffect(DamageEffectType.LightBleeding, canHealLightBleeding, lightBleedingCost);
+                UpdateEffect(
+                    DamageEffectType.LightBleeding,
+                    canHealLightBleeding,
+                    lightBleedingCost);
 
-                // Fracture
-                UpdateEffect(DamageEffectType.Fracture, canHealFracture, fractureCost);
+                UpdateEffect(
+                    DamageEffectType.Fracture,
+                    canHealFracture,
+                    fractureCost);
 
-                // Contusion 
-                UpdateEffect(DamageEffectType.Contusion, true, 0);
+                UpdateEffect(
+                    DamageEffectType.Contusion,
+                    true,
+                    0);
 
-                // RadExposure
-                UpdateEffect(DamageEffectType.RadExposure, true, 0);
+                UpdateEffect(
+                    DamageEffectType.RadExposure,
+                    true,
+                    0);
             }
             else if (config.debug)
             {
-                logger.Warning($"MakeMedsGreatAgain: Could not find item {itemId} to update effects");
+                logger.Warning(
+                    $"MakeMedsGreatAgain: Could not find item {itemId} to update effects");
             }
         }
 
-        void UpdateSurgeryEffect(string itemId, bool enabled, int surgeryCost)
+        void UpdateSurgeryEffect(
+            string itemId,
+            bool enabled,
+            int surgeryCost)
         {
-            if (globals.Templates.Items.TryGetValue(itemId, out var item) && item != null)
+            if (templateTable.Items.TryGetValue(itemId, out var item) && item != null)
             {
                 if (enabled)
                 {
-                    // Ensure the item has EffectsDamage dictionary
                     if (item.Properties.EffectsDamage == null)
                     {
-                        item.Properties.EffectsDamage = new Dictionary<DamageEffectType, EffectsDamageProperties>();
+                        item.Properties.EffectsDamage =
+                            new Dictionary<DamageEffectType, EffectsDamageProperties>();
                     }
 
-                    // Define the DestroyedPart effect structure
                     var destroyedPartEffect = new EffectsDamageProperties
                     {
                         Delay = 0,
@@ -172,134 +210,279 @@ public class MakeMedsGreatAgain(
                         HealthPenaltyMin = 25
                     };
 
-                    // Add or update the "DestroyedPart" effect
-                    if (item.Properties.EffectsDamage.ContainsKey(DamageEffectType.DestroyedPart))
+                    if (item.Properties.EffectsDamage.ContainsKey(
+                        DamageEffectType.DestroyedPart))
                     {
-                        item.Properties.EffectsDamage[DamageEffectType.DestroyedPart] = destroyedPartEffect;
+                        item.Properties.EffectsDamage[
+                            DamageEffectType.DestroyedPart] = destroyedPartEffect;
                     }
                     else
                     {
-                        item.Properties.EffectsDamage.Add(DamageEffectType.DestroyedPart, destroyedPartEffect);
+                        item.Properties.EffectsDamage.Add(
+                            DamageEffectType.DestroyedPart,
+                            destroyedPartEffect);
                     }
 
                     destroyedPartEffect.Cost = surgeryCost;
 
-                    if (config.debug) logger.Info($"MakeMedsGreatAgain: Enabled Surgery (DestroyedPart) for {itemId} with cost {surgeryCost}");
+                    if (config.debug)
+                    {
+                        logger.Info(
+                            $"MakeMedsGreatAgain: Enabled Surgery (DestroyedPart) for {itemId} with cost {surgeryCost}");
+                    }
                 }
                 else
                 {
-                    // If disabled, remove the effect if it exists
-                    if (item.Properties.EffectsDamage != null && item.Properties.EffectsDamage.ContainsKey(DamageEffectType.DestroyedPart))
+                    if (item.Properties.EffectsDamage != null &&
+                        item.Properties.EffectsDamage.ContainsKey(
+                            DamageEffectType.DestroyedPart))
                     {
-                        item.Properties.EffectsDamage.Remove(DamageEffectType.DestroyedPart);
-                        if (config.debug) logger.Info($"MakeMedsGreatAgain: Removed Surgery (DestroyedPart) from {itemId}");
+                        item.Properties.EffectsDamage.Remove(
+                            DamageEffectType.DestroyedPart);
+
+                        if (config.debug)
+                        {
+                            logger.Info(
+                                $"MakeMedsGreatAgain: Removed Surgery (DestroyedPart) from {itemId}");
+                        }
                     }
                 }
             }
             else if (config.debug)
             {
-                logger.Warning($"MakeMedsGreatAgain: Could not find item {itemId} to update surgery effect");
+                logger.Warning(
+                    $"MakeMedsGreatAgain: Could not find item {itemId} to update surgery effect");
             }
         }
 
-        // Helper function to update item usage
-        void UpdateItemUsage(string itemId, int configUsage, int defaultUsage)
+        void UpdateItemUsage(
+            string itemId,
+            int configUsage,
+            int defaultUsage)
         {
-            if (globals.Templates.Items.TryGetValue(itemId, out var item))
+            if (templateTable.Items.TryGetValue(itemId, out var item))
             {
                 if (configUsage > 0)
                 {
                     item.Properties.MaxHpResource = configUsage;
-                    if (config.debug) logger.Info($"MakeMedsGreatAgain: Updated Usage (HP) for {itemId} to {configUsage}");
+
+                    if (config.debug)
+                    {
+                        logger.Info(
+                            $"MakeMedsGreatAgain: Updated Usage (HP) for {itemId} to {configUsage}");
+                    }
                 }
                 else if (configUsage == 0)
                 {
                     item.Properties.MaxHpResource = defaultUsage;
-                    if (config.debug) logger.Info($"MakeMedsGreatAgain: Reset Usage (HP) for {itemId} to default {defaultUsage}");
+
+                    if (config.debug)
+                    {
+                        logger.Info(
+                            $"MakeMedsGreatAgain: Reset Usage (HP) for {itemId} to default {defaultUsage}");
+                    }
                 }
             }
             else if (config.debug)
             {
-                logger.Warning($"MakeMedsGreatAgain: Could not find item {itemId} to update usage");
+                logger.Warning(
+                    $"MakeMedsGreatAgain: Could not find item {itemId} to update usage");
             }
         }
 
         // Caloc-B
         UpdateItemUsage(config.calocID, config.calocUsage, 3);
+
         // Army Bandage
         UpdateItemUsage(config.armyBandageID, config.armyBandageUsage, 2);
+
         // Analgin
-        UpdateItemUsage(config.analginPainkillersID, config.analginPainkillersUsage, 4);
+        UpdateItemUsage(
+            config.analginPainkillersID,
+            config.analginPainkillersUsage,
+            4);
+
         // Augmentin
-        UpdateItemUsage(config.augmentinID, config.augmentinUsage, 1);
+        UpdateItemUsage(
+            config.augmentinID,
+            config.augmentinUsage,
+            1);
+
         // Ibuprofen
-        UpdateItemUsage(config.ibuprofenID, config.ibuprofenUsage, 12);
+        UpdateItemUsage(
+            config.ibuprofenID,
+            config.ibuprofenUsage,
+            12);
+
         // Vaseline
-        UpdateItemUsage(config.vaselinID, config.vaselinUsage, 6);
+        UpdateItemUsage(
+            config.vaselinID,
+            config.vaselinUsage,
+            6);
+
         // Golden Star
-        UpdateItemUsage(config.goldenStarID, config.goldenStarUsage, 10);
+        UpdateItemUsage(
+            config.goldenStarID,
+            config.goldenStarUsage,
+            10);
+
         // Alu Splint
-        UpdateItemUsage(config.aluminiumSplintID, config.aluminiumSplintUsage, 5);
+        UpdateItemUsage(
+            config.aluminiumSplintID,
+            config.aluminiumSplintUsage,
+            5);
+
         // Surv12
-        UpdateItemUsage(config.survivalKitID, config.survivalKitUsage, 15);
+        UpdateItemUsage(
+            config.survivalKitID,
+            config.survivalKitUsage,
+            15);
+
         // CMS
-        UpdateItemUsage(config.cmsID, config.cmsUsage, 5);
+        UpdateItemUsage(
+            config.cmsID,
+            config.cmsUsage,
+            5);
 
         // Grizzly
         if (config.grizzlyChanges)
         {
-            UpdateItemHP(config.grizzlyID, config.grizzlyHP);
-            UpdateSurgeryEffect(config.grizzlyID, config.grizzlyCanDoSurgery, config.grizzlySurgeryCost);
-            UpdateBleedingFractureEffects(config.grizzlyID, config.grizzlyCanHealHeavyBleeding, config.grizzlyHeavyBleedingHealCost, config.grizzlyCanHealFractures, config.grizzlyFractureHealCost, config.grizzlyCanHealLightBleeding, config.grizzlyLightBleedingHealCost);
+            UpdateItemHP(
+                config.grizzlyID,
+                config.grizzlyHP);
+
+            UpdateSurgeryEffect(
+                config.grizzlyID,
+                config.grizzlyCanDoSurgery,
+                config.grizzlySurgeryCost);
+
+            UpdateBleedingFractureEffects(
+                config.grizzlyID,
+                config.grizzlyCanHealHeavyBleeding,
+                config.grizzlyHeavyBleedingHealCost,
+                config.grizzlyCanHealFractures,
+                config.grizzlyFractureHealCost,
+                config.grizzlyCanHealLightBleeding,
+                config.grizzlyLightBleedingHealCost);
         }
 
         // AI-2
         if (config.ai2Changes)
         {
-            UpdateItemHP(config.ai2ID, config.ai2HP);
-            UpdateSurgeryEffect(config.ai2ID, config.ai2CanDoSurgery, config.ai2SurgeryCost);
-            UpdateBleedingFractureEffects(config.ai2ID, config.ai2CanHealHeavyBleeding, config.ai2HeavyBleedingHealCost, config.ai2CanHealFractures, config.ai2FractureHealCost, config.ai2CanHealLightBleeding, config.ai2LightBleedingHealCost);
+            UpdateItemHP(
+                config.ai2ID,
+                config.ai2HP);
+
+            UpdateSurgeryEffect(
+                config.ai2ID,
+                config.ai2CanDoSurgery,
+                config.ai2SurgeryCost);
+
+            UpdateBleedingFractureEffects(
+                config.ai2ID,
+                config.ai2CanHealHeavyBleeding,
+                config.ai2HeavyBleedingHealCost,
+                config.ai2CanHealFractures,
+                config.ai2FractureHealCost,
+                config.ai2CanHealLightBleeding,
+                config.ai2LightBleedingHealCost);
         }
 
         // Car First Aid Kit
         if (config.carKitChanges)
         {
-            UpdateItemHP(config.carKitID, config.carKitHP);
-            UpdateSurgeryEffect(config.carKitID, config.carKitCanDoSurgery, config.carKitSurgeryCost);
-            UpdateBleedingFractureEffects(config.carKitID, config.carKitCanHealHeavyBleeding, config.carKitHeavyBleedingHealCost, config.carKitCanHealFractures, config.carKitFractureHealCost, config.carKitCanHealLightBleeding, config.carKitLightBleedingHealCost);
+            UpdateItemHP(
+                config.carKitID,
+                config.carKitHP);
+
+            UpdateSurgeryEffect(
+                config.carKitID,
+                config.carKitCanDoSurgery,
+                config.carKitSurgeryCost);
+
+            UpdateBleedingFractureEffects(
+                config.carKitID,
+                config.carKitCanHealHeavyBleeding,
+                config.carKitHeavyBleedingHealCost,
+                config.carKitCanHealFractures,
+                config.carKitFractureHealCost,
+                config.carKitCanHealLightBleeding,
+                config.carKitLightBleedingHealCost);
         }
 
         // Salewa
         if (config.salewaChanges)
         {
-            UpdateItemHP(config.salewaID, config.salewaHP);
-            UpdateSurgeryEffect(config.salewaID, config.salewaCanDoSurgery, config.salewaSurgeryCost);
-            UpdateBleedingFractureEffects(config.salewaID, config.salewaCanHealHeavyBleeding, config.salewaHeavyBleedingHealCost, config.salewaCanHealFractures, config.salewaFractureHealCost, config.salewaCanHealLightBleeding, config.salewaLightBleedingHealCost);
+            UpdateItemHP(
+                config.salewaID,
+                config.salewaHP);
+
+            UpdateSurgeryEffect(
+                config.salewaID,
+                config.salewaCanDoSurgery,
+                config.salewaSurgeryCost);
+
+            UpdateBleedingFractureEffects(
+                config.salewaID,
+                config.salewaCanHealHeavyBleeding,
+                config.salewaHeavyBleedingHealCost,
+                config.salewaCanHealFractures,
+                config.salewaFractureHealCost,
+                config.salewaCanHealLightBleeding,
+                config.salewaLightBleedingHealCost);
         }
 
         // IFAK
         if (config.ifakChanges)
         {
-            UpdateItemHP(config.ifakID, config.ifakHP);
-            UpdateSurgeryEffect(config.ifakID, config.ifakCanDoSurgery, config.ifakSurgeryCost);
-            UpdateBleedingFractureEffects(config.ifakID, config.ifakCanHealHeavyBleeding, config.ifakHeavyBleedingHealCost, config.ifakCanHealFractures, config.ifakFractureHealCost, config.ifakCanHealLightBleeding, config.ifakLightBleedingHealCost);
+            UpdateItemHP(
+                config.ifakID,
+                config.ifakHP);
+
+            UpdateSurgeryEffect(
+                config.ifakID,
+                config.ifakCanDoSurgery,
+                config.ifakSurgeryCost);
+
+            UpdateBleedingFractureEffects(
+                config.ifakID,
+                config.ifakCanHealHeavyBleeding,
+                config.ifakHeavyBleedingHealCost,
+                config.ifakCanHealFractures,
+                config.ifakFractureHealCost,
+                config.ifakCanHealLightBleeding,
+                config.ifakLightBleedingHealCost);
         }
 
         // AFAK
         if (config.afakChanges)
         {
-            UpdateItemHP(config.afakID, config.afakHP);
-            UpdateSurgeryEffect(config.afakID, config.afakCanDoSurgery, config.afakSurgeryCost);
-            UpdateBleedingFractureEffects(config.afakID, config.afakCanHealHeavyBleeding, config.afakHeavyBleedingHealCost, config.afakCanHealFractures, config.afakFractureHealCost, config.afakCanHealLightBleeding, config.afakLightBleedingHealCost);
+            UpdateItemHP(
+                config.afakID,
+                config.afakHP);
+
+            UpdateSurgeryEffect(
+                config.afakID,
+                config.afakCanDoSurgery,
+                config.afakSurgeryCost);
+
+            UpdateBleedingFractureEffects(
+                config.afakID,
+                config.afakCanHealHeavyBleeding,
+                config.afakHeavyBleedingHealCost,
+                config.afakCanHealFractures,
+                config.afakFractureHealCost,
+                config.afakCanHealLightBleeding,
+                config.afakLightBleedingHealCost);
         }
 
-
-        await Task.CompletedTask;
+        cancellationToken.ThrowIfCancellationRequested();
     }
 
     public class ModConfig
     {
         public bool debug { get; set; } = true;
+
         // Simple Usage Items
         public string calocID { get; set; } = string.Empty;
         public string armyBandageID { get; set; } = string.Empty;
